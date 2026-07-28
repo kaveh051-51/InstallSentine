@@ -175,13 +175,70 @@ Stop-Process -Id 1234
         };
         var report = CreateReport(events);
         var path = await _sut.GenerateRollbackScriptAsync(report);
-
         var content = await File.ReadAllTextAsync(path);
         content.Should().Contain("REGISTRY ROLLBACK");
         // Verify body is NOT empty — the try block must contain actual commands
         content.Should().Contain("Deleted registry key:");
         content.Should().Contain("Restore registry key:");
         content.Should().Contain("Rollback completed.");
+    }
+    [Fact]
+    public async Task GenerateRollbackScriptAsync_EmptyRegistryPaths_SkippedNoErrors()
+    {
+        // Regression: ETW sometimes emits events with empty KeyName
+        // The script must NOT contain Test-Path '' (empty path)
+        var events = new List<SystemEvent>
+        {
+            CreateEvent(ActionType.SetValue, "", EventCategory.Registry),
+            CreateEvent(ActionType.CreateKey, "   ", EventCategory.Registry),
+            CreateEvent(ActionType.CreateKey, @"\REGISTRY\MACHINE\SOFTWARE\ValidKey", EventCategory.Registry)
+        };
+        var report = CreateReport(events);
+        var path = await _sut.GenerateRollbackScriptAsync(report);
+
+        var content = await File.ReadAllTextAsync(path);
+        // Must NOT have empty paths in the script
+        content.Should().NotContain("Test-Path ''");
+        content.Should().NotContain("Test-Path '   '");
+        // Must have the valid key converted to HKLM:\ format
+        content.Should().Contain("HKLM:\\SOFTWARE\\ValidKey");
+        content.Should().Contain("Rollback completed.");
+    }
+
+    [Fact]
+    public async Task GenerateRollbackScriptAsync_NtKernelPaths_ConvertedToHklmFormat()
+    {
+        // Regression: NT kernel paths like \REGISTRY\MACHINE\... must become HKLM:\...
+        var events = new List<SystemEvent>
+        {
+            CreateEvent(ActionType.CreateKey, @"\REGISTRY\MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion", EventCategory.Registry),
+            CreateEvent(ActionType.SetValue, @"\REGISTRY\MACHINE\SOFTWARE\AMD\HKIDs", EventCategory.Registry)
+        };
+        var report = CreateReport(events);
+        var path = await _sut.GenerateRollbackScriptAsync(report);
+
+        var content = await File.ReadAllTextAsync(path);
+        content.Should().Contain("HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion");
+        content.Should().Contain("HKLM:\\SOFTWARE\\AMD\\HKIDs");
+        content.Should().NotContain(@"\REGISTRY\MACHINE\");
+    }
+
+    [Fact]
+    public async Task GenerateRollbackScriptAsync_UserHivePaths_ConvertedToHkcuFormat()
+    {
+        // Regression: \REGISTRY\USER\{SID}\... must become HKCU:\...
+        var events = new List<SystemEvent>
+        {
+            CreateEvent(ActionType.CreateKey,
+                @"\REGISTRY\USER\S-1-5-21-3505348320-2383596954-3114729888-1001\Software\Google\Chrome",
+                EventCategory.Registry)
+        };
+        var report = CreateReport(events);
+        var path = await _sut.GenerateRollbackScriptAsync(report);
+
+        var content = await File.ReadAllTextAsync(path);
+        content.Should().Contain("HKCU:\\Software\\Google\\Chrome");
+        content.Should().NotContain(@"\REGISTRY\USER\");
     }
 
     private static MonitoringReport CreateReport(IReadOnlyList<SystemEvent> events)

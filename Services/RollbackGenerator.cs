@@ -147,6 +147,10 @@ public sealed class RollbackGenerator : IRollbackGenerator
             }
             else if (evt.Category == EventCategory.Registry)
             {
+                // Skip events with empty or whitespace-only paths (ETW sometimes emits these)
+                if (string.IsNullOrWhiteSpace(evt.TargetPath))
+                    continue;
+
                 var key = $"{evt.TargetPath}|{evt.Action}";
                 registryChanges[key] = new RegistryChangeInfo
                 {
@@ -273,7 +277,7 @@ public sealed class RollbackGenerator : IRollbackGenerator
         sb.AppendLine($"# Actions: {actions.Count}");
         sb.AppendLine();
         sb.AppendLine("Set-StrictMode -Version Latest");
-        sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        sb.AppendLine("$ErrorActionPreference = 'Continue'");
         sb.AppendLine();
         sb.AppendLine("try {");
         sb.AppendLine("    Write-Host 'InstallSentinel Rollback Script' -ForegroundColor Cyan");
@@ -311,7 +315,11 @@ public sealed class RollbackGenerator : IRollbackGenerator
             sb.AppendLine("    # ===== REGISTRY ROLLBACK =====");
             foreach (var action in registryActions)
             {
-                var escapedPath = EscapePowerShellString(action.TargetPath);
+                var psPath = ConvertToPsRegistryPath(action.TargetPath);
+                if (psPath == null)
+                    continue; // Skip actions with unconvertible paths
+
+                var escapedPath = EscapePowerShellString(psPath);
                 var valueName = action.RegistryValueName ?? string.Empty;
 
                 switch (action.ActionType)
@@ -371,6 +379,51 @@ public sealed class RollbackGenerator : IRollbackGenerator
     private static string EscapePowerShellString(string input)
     {
         return input.Replace("'", "''").Replace("$", "`$").Replace("@", "`@");
+    }
+
+    /// <summary>
+    /// Converts NT kernel registry paths to PowerShell-compatible paths.
+    /// \REGISTRY\MACHINE\... → HKLM:\...
+    /// \REGISTRY\USER\...    → HKCU:\...
+    /// Relative paths        → HKLM:\... (default hive for installer keys)
+    /// Returns null for empty/unconvertible paths.
+    /// </summary>
+    private static string? ConvertToPsRegistryPath(string? rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return null;
+
+        var path = rawPath.Trim();
+
+        // Already a PowerShell-style path
+        if (path.StartsWith("HKLM:\\", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("HKCU:\\", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("HKCR:\\", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("HKU:\\", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("HKCC:\\", StringComparison.OrdinalIgnoreCase))
+            return path;
+
+        // NT kernel path: \REGISTRY\MACHINE\...
+        if (path.StartsWith(@"\REGISTRY\MACHINE\", StringComparison.OrdinalIgnoreCase))
+            return "HKLM:\\" + path[@"\REGISTRY\MACHINE\".Length..];
+
+        // NT kernel path: \REGISTRY\USER\{SID}\...
+        if (path.StartsWith(@"\REGISTRY\USER\", StringComparison.OrdinalIgnoreCase))
+        {
+            var remainder = path[@"\REGISTRY\USER\".Length..];
+            // Skip the SID portion to get to the actual key path
+            var slashIdx = remainder.IndexOf('\\');
+            if (slashIdx > 0)
+                return "HKCU:\\" + remainder[(slashIdx + 1)..];
+            return "HKCU:\\" + remainder;
+        }
+
+        // Relative path (e.g., "Software\Microsoft\...") — default to HKLM
+        if (!path.StartsWith("\\", StringComparison.Ordinal))
+            return "HKLM:\\" + path;
+
+        // Anything else (partial/unknown format) — skip
+        return null;
     }
 
     private static int CountMatches(string text, string pattern)

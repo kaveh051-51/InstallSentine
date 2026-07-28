@@ -13,7 +13,7 @@ using Spectre.Console;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Configuration
-builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
 builder.Services.Configure<AppConfig>(builder.Configuration);
 
 // Agent Logger (AI-friendly structured logging)

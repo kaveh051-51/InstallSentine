@@ -53,7 +53,7 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
         try
         {
             _rootProcess = Process.Start(startInfo);
-            _agentLogger.Info("LAUNCHER", $"Process started: {Path.GetFileName(filePath)} PID={_rootProcess.Id}");
+            _agentLogger.Info("LAUNCHER", $"Process started: {Path.GetFileName(filePath)} PID={_rootProcess?.Id ?? 0}");
             if (_rootProcess == null)
             {
                 return new ProcessLaunchResult

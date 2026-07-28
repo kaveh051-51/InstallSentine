@@ -42,7 +42,7 @@ public sealed class LiveEventTable(int maxRows = 200)
         lock (_lock)
         {
             _events.Insert(0, evt);
-            if (_events.Count > 200)
+            if (_events.Count > maxRows)
                 _events.RemoveAt(_events.Count - 1);
 
             _totalEvents++;
@@ -92,7 +92,7 @@ public sealed class LiveEventTable(int maxRows = 200)
                 .AddColumn(new TableColumn("[bold cyan]Action[/]").Width(14))
                 .AddColumn(new TableColumn("[bold cyan]Target Path[/]").Width(80).NoWrap());
 
-            var displayEvents = _events.Take(50).ToList();
+            var displayEvents = _events.Take(maxRows).ToList();
             foreach (var evt in displayEvents)
             {
                 var time = evt.Timestamp.ToLocalTime().ToString("HH:mm:ss");

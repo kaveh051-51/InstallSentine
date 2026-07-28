@@ -1,0 +1,12 @@
+[*.cs]
+# اجبار به استفاده از File-Scoped Namespaces
+csharp_style_namespace_declarations = file_scoped:warning
+
+# اجبار به استفاده از Primary Constructors در C# 12
+csharp_style_primary_constructor = true:suggestion
+
+# اجبار به استفاده از Collection Expressions جدید [] به جای new List()
+csharp_style_prefer_collection_expression = true:warning
+
+# اجبار به Pattern Matching مدرن
+csharp_style_prefer_pattern_matching = true:suggestion

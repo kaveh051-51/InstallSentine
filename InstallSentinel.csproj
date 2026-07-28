@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+
+    <!-- Using latest .NET for Windows -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Exclude test project from main build -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**\*</DefaultItemExcludes>
+
+    <!-- Modern Single-File publishing -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- Admin manifest -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+      <!-- Spectre.Console for TUI -->
+      <PackageReference Include="Spectre.Console" Version="0.49.1" />
+      <PackageReference Include="Spectre.Console.Cli" Version="0.49.1" />
+
+      <!-- Microsoft.Diagnostics.Tracing for ETW -->
+      <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.10" />
+
+      <!-- HTTP for VirusTotal -->
+      <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+
+      <!-- Configuration -->
+      <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+
+      <!-- System.Management for WMI -->
+      <PackageReference Include="System.Management" Version="9.0.0" />
+    </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="app.manifest">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

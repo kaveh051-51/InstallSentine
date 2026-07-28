@@ -58,18 +58,37 @@ Terminal-based security monitoring tool for Windows installer tracking (.exe/.ms
 - **EtwMonitorEngineTests** (6 tests) - IsRunning, SessionName, GetStatistics, EventReceived/ErrorOccurred, StopAsync
 - **ModelsTests** (7 tests) - SystemEvent.DisplayAction, MonitoringReport.Duration/Counts, VirusTotalReport.ThreatStatus, ProcessNode.TotalEvents
 
+### Phase 7: AI-Friendly Logging (AgentLogger) ✅ COMPLETE
+- [x] Created `Services/Logging/AgentLogger.cs` — singleton structured logger
+  - Format: `[timestamp] [AGENT] [LEVEL] [SOURCE] message`
+  - File output to `logs/agent_{timestamp}.log`
+  - Thread-safe counters: Total, Error, Warning, Event
+  - Methods: Info, Warn, Error, Event, Filter, Rollback, Etw, Ui
+- [x] Registered `AgentLogger` in DI (`Program.cs`)
+- [x] Injected into all 6 core services:
+  - `EtwMonitorEngine` — ETW session lifecycle + event dispatch
+  - `NoiseFilterService` — filter decisions with reasons
+  - `ProcessLauncherService` — process start tracking
+  - `VirusTotalService` — hash scan operations
+  - `TerminalApp` — UI lifecycle and app state
+  - `RollbackGenerator` — script gen, validation, actions
+- [x] Updated all 4 test constructors to pass AgentLogger
+- [x] All 54 tests passing, 0 build errors
+- [x] Published: `InstallSentinel.exe` ✅
+- [x] Committed: `bca1266` on `origin/main`
+
 ---
 
 ## Current Status
 
 | Metric | Status |
 |---|---|
-| **Build** | ✅ 0 errors, 0 warnings |
-| **Tests** | ✅ 54/54 passing (205ms) |
+| **Build** | ✅ 0 errors, 2 warnings (pre-existing) |
+| **Tests** | ✅ 54/54 passing |
 | **Format** | ✅ dotnet format clean |
-| **Phase** | 6/7 complete |
+| **Phase** | 7/7 complete |
 
-**Next Action:** Phase 7 — Integration testing with real ETW sessions
+**Next Action:** Phase 8 — Integration testing with real ETW sessions
 
 ---
 
@@ -79,6 +98,8 @@ Terminal-based security monitoring tool for Windows installer tracking (.exe/.ms
 - Spectre.Console for TUI
 - Microsoft.Diagnostics.Tracing.TraceEvent for ETW
 - Channel\<SystemEvent\> for async event streaming
+- AgentLogger as shared singleton injected via DI primary constructors
+- AI logs use `[AGENT]` wrapper + subsystem tag (ETW, NOISE, LAUNCHER, VT, ROLLBACK, UI) for grep-ability
 - NSubstitute + xUnit + FluentAssertions for testing
 
 ## Risk Areas

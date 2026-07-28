@@ -281,7 +281,7 @@ public sealed class RollbackGenerator : IRollbackGenerator
         sb.AppendLine();
 
         var fileActions = actions.Where(a => a.ActionType is RollbackActionType.DeleteFile or RollbackActionType.RestoreFile).ToList();
-        var registryActions = actions.Where(a => a.ActionType.ToString().StartsWith("Registry")).ToList();
+        var registryActions = actions.Where(a => a.ActionType is RollbackActionType.DeleteRegistryKey or RollbackActionType.RestoreRegistryKey or RollbackActionType.DeleteRegistryValue or RollbackActionType.RestoreRegistryValue).ToList();
         var processActions = actions.Where(a => a.ActionType == RollbackActionType.TerminateProcess).ToList();
 
         if (fileActions.Count > 0)

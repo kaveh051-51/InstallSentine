@@ -162,6 +162,28 @@ Stop-Process -Id 1234
         _sut.GetRollbackDirectory().Should().Be(_tempDir);
     }
 
+    [Fact]
+    public async Task GenerateRollbackScriptAsync_RegistryActions_GeneratesRegistrySection()
+    {
+        // Regression: previously StartsWith("Registry") filtered out all registry actions
+        // because enum values start with "Delete"/"Restore", not "Registry"
+        var events = new List<SystemEvent>
+        {
+            CreateEvent(ActionType.CreateKey, @"\REGISTRY\MACHINE\SOFTWARE\MyCompany\MyApp", EventCategory.Registry),
+            CreateEvent(ActionType.SetValue, @"\REGISTRY\MACHINE\SOFTWARE\MyCompany\MyApp", EventCategory.Registry),
+            CreateEvent(ActionType.DeleteKey, @"\REGISTRY\MACHINE\SOFTWARE\OldCompany", EventCategory.Registry)
+        };
+        var report = CreateReport(events);
+        var path = await _sut.GenerateRollbackScriptAsync(report);
+
+        var content = await File.ReadAllTextAsync(path);
+        content.Should().Contain("REGISTRY ROLLBACK");
+        // Verify body is NOT empty — the try block must contain actual commands
+        content.Should().Contain("Deleted registry key:");
+        content.Should().Contain("Restore registry key:");
+        content.Should().Contain("Rollback completed.");
+    }
+
     private static MonitoringReport CreateReport(IReadOnlyList<SystemEvent> events)
     {
         var rootNode = CreateProcessNode(100, ProcessTreeRelation.Root);

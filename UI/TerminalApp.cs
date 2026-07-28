@@ -6,6 +6,7 @@ using InstallSentinel.Models.Enums;
 using InstallSentinel.Services.Interfaces;
 using InstallSentinel.UI.Components;
 using InstallSentinel.Common.Helpers;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,7 +25,8 @@ public sealed class TerminalApp(
     IRollbackGenerator rollbackGenerator,
     LiveEventTable liveTable,
     SummaryTreeRenderer summaryRenderer,
-    IOptions<AppConfig> config)
+    IOptions<AppConfig> config,
+    AgentLogger agentLogger)
 {
     private readonly IServiceProvider _services = services;
     private readonly ILogger<TerminalApp> _logger = logger;
@@ -37,6 +39,7 @@ public sealed class TerminalApp(
     private readonly LiveEventTable _liveTable = liveTable;
     private readonly SummaryTreeRenderer _summaryRenderer = summaryRenderer;
     private readonly AppConfig _config = config.Value;
+    private readonly AgentLogger _agentLogger = agentLogger;
 
     private ProcessNode? _processTree;
     private readonly List<SystemEvent> _allEvents = [];
@@ -49,6 +52,8 @@ public sealed class TerminalApp(
     {
         try
         {
+            _agentLogger.Ui("UI", "Application started");
+            _agentLogger.Ui("UI", $"Admin: {_privilegeService.IsRunningAsAdmin()}");
             AnsiConsole.Clear();
             ShowBanner();
 
@@ -59,9 +64,12 @@ public sealed class TerminalApp(
 
             _installerPath = targetPath;
             _installerSha256 = await HashUtils.ComputeSha256Async(targetPath);
+            _agentLogger.Info("APP", $"Target selected: {targetPath}");
+            _agentLogger.Info("APP", $"SHA256: {_installerSha256}");
 
             var vtReport = await ScanWithVirusTotalAsync(_installerPath, _installerSha256);
 
+            _agentLogger.Info("APP", $"VirusTotal: {vtReport?.ThreatStatus} ({vtReport?.Positives}/{vtReport?.Total})");
             if (vtReport?.ThreatStatus == ThreatStatus.Malicious)
             {
                 AnsiConsole.MarkupLine("[bold red]⚠ VIRUS TOTAL: MALICIOUS DETECTED![/]");
@@ -69,6 +77,8 @@ public sealed class TerminalApp(
                     return 1;
             }
 
+            _agentLogger.Ui("UI", "Application started");
+            _agentLogger.Ui("UI", $"Admin: {_privilegeService.IsRunningAsAdmin()}");
             AnsiConsole.Clear();
             ShowBanner();
             AnsiConsole.MarkupLine($"[green]✓ Target:[/] {_installerPath}");
@@ -77,6 +87,7 @@ public sealed class TerminalApp(
             // Screen 2: Live Monitoring
             _startTime = DateTime.UtcNow;
             _cts = new CancellationTokenSource();
+            _agentLogger.Ui("UI", "Starting live monitoring...");
 
             await RunLiveMonitoringAsync(_cts.Token);
 
@@ -248,6 +259,7 @@ public sealed class TerminalApp(
             catch (Exception ex)
             {
                 _logger.LogError(ex, "ETW monitor error");
+                _agentLogger.Error("ETW", "ETW monitor error", ex);
             }
         }, cancellationToken);
 
@@ -294,6 +306,7 @@ public sealed class TerminalApp(
     private void OnEtwError(object? sender, Exception ex)
     {
         _logger.LogError(ex, "ETW error");
+        _agentLogger.Error("ETW", "ETW error", ex);
     }
 
     private static async Task CollectEventsAsync(CancellationToken cancellationToken)

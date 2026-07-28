@@ -3,6 +3,7 @@ namespace InstallSentinel.Services;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
 using InstallSentinel.Services.Interfaces;
+using InstallSentinel.Services.Logging;
 using InstallSentinel.Common;
 using InstallSentinel.Common.Helpers;
 using InstallSentinel.Configuration;
@@ -15,10 +16,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 
-public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<AppConfig> config) : IEtwMonitorEngine, IDisposable, IAsyncDisposable
+public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<AppConfig> config, AgentLogger agentLogger) : IEtwMonitorEngine, IDisposable, IAsyncDisposable
 {
     private readonly EtwSettings _settings = config.Value.Etw;
     private readonly INoiseFilterService _noiseFilter = noiseFilter;
+    private readonly AgentLogger _agentLogger = agentLogger;
     private TraceEventSession? _kernelSession;
     private CancellationTokenSource? _cts;
     private Task? _processingTask;
@@ -49,6 +51,10 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         if (IsRunning)
             throw new InvalidOperationException("ETW monitor is already running");
 
+        _agentLogger.Etw("ETW", $"Starting ETW session: {configuration.SessionName}");
+        _agentLogger.Etw("ETW", $"Root PID: {configuration.RootProcessId}, Tracked PIDs: {configuration.ProcessTreePids.Count}");
+        _agentLogger.Etw("ETW", $"Providers: {string.Join(", ", configuration.KernelProviders)}");
+
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _eventWriter = eventChannel;
 
@@ -67,6 +73,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         RefreshProcessCache();
         _startTime = DateTime.UtcNow;
         SessionName = configuration.SessionName + "_" + Guid.NewGuid().ToString("N")[..8];
+        _agentLogger.Etw("ETW", $"Session name: {SessionName}");
 
         _kernelSession = new TraceEventSession(SessionName, TraceEventSessionOptions.Create)
         {
@@ -410,6 +417,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         if (_noiseFilter.ShouldFilter(evt))
         {
             Interlocked.Increment(ref _eventsFiltered);
+            _agentLogger.Filter("ETW", $"Filtered: {category}/{action} PID={processId} {normalizedPath}");
             return null;
         }
 
@@ -439,6 +447,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         else
         {
             Interlocked.Increment(ref _eventsPublished);
+            _agentLogger.Event("ETW", $"{evt.Category}/{evt.Action}", $"PID={evt.ProcessId} {evt.TargetPath}");
             EventReceived?.Invoke(this, evt);
         }
     }
@@ -472,6 +481,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        _agentLogger.Etw("ETW", "Stopping ETW session...");
         _cts?.Cancel();
 
         if (_kernelSession != null)
@@ -492,6 +502,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
             _kernelSession.Source.Kernel.ThreadStop -= OnThreadStop;
             _kernelSession.Source.Kernel.ImageLoad -= OnImageLoad;
 
+            _agentLogger.Etw("ETW", $"Session stopped. Received={_eventsReceived}, Filtered={_eventsFiltered}, Published={_eventsPublished}, Dropped={_eventsDropped}");
             _kernelSession.Dispose();
             _kernelSession = null;
         }

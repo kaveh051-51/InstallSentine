@@ -1,4 +1,5 @@
 namespace InstallSentinel.Services;
+using InstallSentinel.Services.Logging;
 using InstallSentinel.Services;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
@@ -8,11 +9,12 @@ using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Management;
 
-public sealed class ProcessLauncherService(IOptions<AppConfig> config) : IProcessLauncher
+public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogger agentLogger) : IProcessLauncher
 {
     private readonly HashSet<int> _trackedPids = [];
     private readonly ReaderWriterLockSlim _pidLock = new();
     private readonly AppConfig _config = config.Value;
+    private readonly AgentLogger _agentLogger = agentLogger;
     private Process? _rootProcess;
     private ManagementEventWatcher? _processStartWatcher;
     private ManagementEventWatcher? _processStopWatcher;
@@ -51,6 +53,7 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config) : IProces
         try
         {
             _rootProcess = Process.Start(startInfo);
+            _agentLogger.Info("LAUNCHER", $"Process started: {Path.GetFileName(filePath)} PID={_rootProcess.Id}");
             if (_rootProcess == null)
             {
                 return new ProcessLaunchResult

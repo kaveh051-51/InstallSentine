@@ -5,6 +5,7 @@ using InstallSentinel.Configuration;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
 using InstallSentinel.Services;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -27,7 +28,8 @@ public class NoiseFilterServiceTests
                 ExcludedExtensions = [".tmp", ".temp", ".log"]
             }
         });
-        _sut = new NoiseFilterService(config);
+        var agentLogger = new AgentLogger(Path.Combine(Path.GetTempPath(), $"Logs_{Guid.NewGuid():N}"));
+        _sut = new NoiseFilterService(config, agentLogger);
     }
 
     [Fact]

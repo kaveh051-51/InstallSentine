@@ -1,4 +1,5 @@
 namespace InstallSentinel.Services;
+using InstallSentinel.Services.Logging;
 
 using InstallSentinel.Models;
 using InstallSentinel.Services.Interfaces;
@@ -13,9 +14,11 @@ public sealed class VirusTotalService : IVirusTotalService
     private readonly HttpClient _httpClient;
     private readonly VirusTotalSettings _settings;
     private readonly SemaphoreSlim _rateLimiter = new(1, 1);
+    private readonly AgentLogger _agentLogger;
 
-    public VirusTotalService(HttpClient httpClient, IOptions<AppConfig> config)
+    public VirusTotalService(HttpClient httpClient, IOptions<AppConfig> config, AgentLogger agentLogger)
     {
+        _agentLogger = agentLogger;
         _httpClient = httpClient;
         _settings = config.Value.VirusTotal;
 
@@ -55,6 +58,7 @@ public sealed class VirusTotalService : IVirusTotalService
         try
         {
             var url = $"/files/{sha256}";
+            _agentLogger.Info("VT", $"Scanning hash: {sha256[..16]}...");
             var response = await _httpClient.GetAsync(url, cancellationToken);
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)

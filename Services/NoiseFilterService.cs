@@ -7,6 +7,7 @@ using InstallSentinel.Common;
 using InstallSentinel.Common.Helpers;
 using InstallSentinel.Configuration;
 using Microsoft.Extensions.Options;
+using InstallSentinel.Services.Logging;
 
 public sealed class NoiseFilterService : INoiseFilterService
 {
@@ -19,9 +20,11 @@ public sealed class NoiseFilterService : INoiseFilterService
     private long _filteredEvents;
     private long _passedEvents;
     private readonly Dictionary<string, long> _filteredByReason = [];
+    private readonly AgentLogger _agentLogger;
 
-    public NoiseFilterService(IOptions<AppConfig> config)
+    public NoiseFilterService(IOptions<AppConfig> config, AgentLogger agentLogger)
     {
+        _agentLogger = agentLogger;
         var settings = config.Value.NoiseFilter;
 
         foreach (var path in settings.ExcludedPaths)
@@ -55,6 +58,7 @@ public sealed class NoiseFilterService : INoiseFilterService
         if (reason != null)
         {
             Interlocked.Increment(ref _filteredEvents);
+            _agentLogger.Filter("NOISE", $"Filter reason={reason} PID={evt.ProcessId} {evt.ProcessName} {evt.TargetPath}");
             _lock.EnterWriteLock();
             try
             {

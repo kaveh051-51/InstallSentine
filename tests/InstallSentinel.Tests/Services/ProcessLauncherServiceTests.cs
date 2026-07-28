@@ -5,6 +5,7 @@ using InstallSentinel.Configuration;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
 using InstallSentinel.Services;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -15,7 +16,8 @@ public class ProcessLauncherServiceTests : IDisposable
     public ProcessLauncherServiceTests()
     {
         var config = Options.Create(new AppConfig());
-        _sut = new ProcessLauncherService(config);
+        var agentLogger = new AgentLogger(Path.Combine(Path.GetTempPath(), $"Logs_{Guid.NewGuid():N}"));
+        _sut = new ProcessLauncherService(config, agentLogger);
     }
 
     public void Dispose()

@@ -6,6 +6,7 @@ using InstallSentinel.Services.Interfaces;
 using InstallSentinel.Common;
 using InstallSentinel.Common.Helpers;
 using InstallSentinel.Configuration;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Text;
@@ -13,10 +14,12 @@ using System.Text;
 public sealed class RollbackGenerator : IRollbackGenerator
 {
     private readonly RollbackSettings _settings;
+    private readonly AgentLogger _agentLogger;
     private int _scriptCounter = 0;
 
-    public RollbackGenerator(IOptions<AppConfig> config)
+    public RollbackGenerator(IOptions<AppConfig> config, AgentLogger agentLogger)
     {
+        _agentLogger = agentLogger;
         _settings = config.Value.Rollback;
         Directory.CreateDirectory(_settings.OutputDirectory);
     }
@@ -26,6 +29,7 @@ public sealed class RollbackGenerator : IRollbackGenerator
         string? outputPath = null,
         CancellationToken cancellationToken = default)
     {
+        _agentLogger.Rollback("ROLLBACK", $"Generating script from report: {report.AllEvents.Count} events");
         return await GenerateRollbackScriptAsync(
             report.AllEvents,
             [report.ProcessTree],
@@ -45,9 +49,11 @@ public sealed class RollbackGenerator : IRollbackGenerator
     {
         var actions = BuildRollbackActions(events, processTree);
         var scriptPath = outputPath ?? GetDefaultScriptPath();
+        _agentLogger.Rollback("ROLLBACK", $"Built {actions.Count} rollback actions, writing to {Path.GetFileName(scriptPath)}");
 
         var script = BuildPowerShellScript(actions, installerPath, installerSha256);
         await File.WriteAllTextAsync(scriptPath, script, Encoding.UTF8, cancellationToken);
+        _agentLogger.Rollback("ROLLBACK", $"Script written: {script.Length} chars");
 
         CleanupOldScripts();
         return scriptPath;
@@ -57,6 +63,7 @@ public sealed class RollbackGenerator : IRollbackGenerator
     {
         if (!File.Exists(scriptPath))
         {
+            _agentLogger.Warn("ROLLBACK", $"Script not found: {scriptPath}");
             return new RollbackGenerationResult
             {
                 Success = false,
@@ -82,6 +89,8 @@ public sealed class RollbackGenerator : IRollbackGenerator
             warnings.Add("Script may not handle errors gracefully");
         if (!content.Contains("WhatIf"))
             warnings.Add("Consider adding -WhatIf for safety testing");
+
+        _agentLogger.Info("ROLLBACK", $"Validated script: {fileActions} file + {registryActions} registry + {processActions} process = {fileActions + registryActions + processActions} total actions, {warnings.Count} warnings");
 
         return new RollbackGenerationResult
         {

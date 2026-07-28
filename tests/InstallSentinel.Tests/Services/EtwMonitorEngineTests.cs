@@ -5,6 +5,7 @@ using InstallSentinel.Configuration;
 using InstallSentinel.Models;
 using InstallSentinel.Services;
 using InstallSentinel.Services.Interfaces;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
@@ -13,6 +14,7 @@ public class EtwMonitorEngineTests : IDisposable
 {
     private readonly EtwMonitorEngine _sut;
     private readonly INoiseFilterService _noiseFilter;
+    private readonly AgentLogger _agentLogger;
 
     public EtwMonitorEngineTests()
     {
@@ -28,12 +30,14 @@ public class EtwMonitorEngineTests : IDisposable
                 KernelProviders = []
             }
         });
-        _sut = new EtwMonitorEngine(_noiseFilter, config);
+        _agentLogger = new AgentLogger(Path.Combine(Path.GetTempPath(), $"Logs_{Guid.NewGuid():N}"));
+        _sut = new EtwMonitorEngine(_noiseFilter, config, _agentLogger);
     }
 
     public void Dispose()
     {
         _sut.Dispose();
+        _agentLogger?.Dispose();
     }
 
     [Fact]

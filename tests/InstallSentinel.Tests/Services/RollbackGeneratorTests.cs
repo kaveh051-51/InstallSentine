@@ -5,6 +5,7 @@ using InstallSentinel.Configuration;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
 using InstallSentinel.Services;
+using InstallSentinel.Services.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -12,11 +13,15 @@ public class RollbackGeneratorTests : IDisposable
 {
     private readonly RollbackGenerator _sut;
     private readonly string _tempDir;
+    private readonly AgentLogger _agentLogger;
 
     public RollbackGeneratorTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"InstallSentinelTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
+
+        var logDir = Path.Combine(_tempDir, "logs");
+        _agentLogger = new AgentLogger(logDir);
 
         var config = Options.Create(new AppConfig
         {
@@ -28,11 +33,12 @@ public class RollbackGeneratorTests : IDisposable
                 MaxRollbackScripts = 5
             }
         });
-        _sut = new RollbackGenerator(config);
+        _sut = new RollbackGenerator(config, _agentLogger);
     }
 
     public void Dispose()
     {
+        _agentLogger?.Dispose();
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, true);
     }

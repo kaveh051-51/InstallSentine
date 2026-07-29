@@ -26,6 +26,7 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
         string filePath,
         string? arguments = null,
         string? workingDirectory = null,
+        Action<int, string>? onProcessStarted = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath))
@@ -84,6 +85,9 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
             {
                 _pidLock.ExitWriteLock();
             }
+
+            // Notify caller immediately with PID so they can configure ETW tracking BEFORE session starts
+            onProcessStarted?.Invoke(_rootProcess.Id, Path.GetFileName(filePath));
 
             SetupProcessWatchers(_rootProcess.Id);
 

@@ -221,13 +221,54 @@ public sealed class TerminalApp(
         _etwMonitor.EventReceived += OnEventReceived;
         _etwMonitor.ErrorOccurred += OnEtwError;
 
-        // Pre-launch: create ETW session BEFORE starting the installer
-        // so we don't miss early events (registry/file writes that happen immediately)
+        int rootPid = 0;
+        string rootProcessName = "";
+
+        // FIRST: Launch the installer and get PID IMMEDIATELY via callback
+        // This ensures PID is tracked BEFORE ETW session starts
+        AnsiConsole.MarkupLine($"[cyan]Launching installer...[/]");
+        var launchResult = await _processLauncher.LaunchAndTrackAsync(
+            _installerPath,
+            null,
+            null,
+            (pid, name) =>
+            {
+                rootPid = pid;
+                rootProcessName = name;
+                _agentLogger.Info("UI", $"Installer launched: {name} (PID={pid}) — adding to ETW tracking");
+                _etwMonitor.AddTrackedPid(pid, name, 0);
+            },
+            cancellationToken);
+
+        if (!launchResult.Success)
+        {
+            AnsiConsole.MarkupLine($"[red]Failed to launch: {launchResult.ErrorMessage}[/]");
+            return;
+        }
+
+        // Fallback: if callback didn't fire, use launchResult
+        if (rootPid == 0)
+        {
+            rootPid = launchResult.RootProcessId;
+            rootProcessName = launchResult.RootProcessName;
+            _etwMonitor.AddTrackedPid(rootPid, rootProcessName, 0);
+        }
+
+        // Add any children already tracked by launcher
+        foreach (var pid in _processLauncher.GetTrackedPids())
+        {
+            if (pid != rootPid)
+                _etwMonitor.AddTrackedPid(pid, "child", rootPid);
+        }
+
+        _liveTable.SetContext(rootPid, rootProcessName);
+
+        // NOW: Start ETW session with PID already tracked
         var eventChannel = Channel.CreateUnbounded<SystemEvent>();
         var monitorConfig = new MonitorConfiguration
         {
-            RootProcessId = 0, // Will be set after launch
-            ProcessTreePids = new HashSet<int>(),
+            RootProcessId = rootPid,
+            ProcessTreePids = _processLauncher.GetTrackedPids(),
             SessionName = _config.Etw.SessionName,
             BufferSizeMb = _config.Etw.BufferSizeMb,
             MinBuffers = _config.Etw.MinBuffers,
@@ -244,28 +285,6 @@ public sealed class TerminalApp(
         {
             _logger.LogError(ex, "ETW monitor error");
             _agentLogger.Error("ETW", "ETW monitor error", ex);
-        }
-
-        // Now start the installer
-        AnsiConsole.MarkupLine($"[cyan]Launching installer...[/]");
-        var launchResult = await _processLauncher.LaunchAndTrackAsync(_installerPath, null, null, cancellationToken);
-
-        if (!launchResult.Success)
-        {
-            AnsiConsole.MarkupLine($"[red]Failed to launch: {launchResult.ErrorMessage}[/]");
-            return;
-        }
-
-        var rootPid = launchResult.RootProcessId;
-        _liveTable.SetContext(rootPid, launchResult.RootProcessName);
-
-        // IMMEDIATELY add root PID to ETW engine — before any events can arrive.
-        // Child processes spawn within milliseconds and we must track them from the start.
-        _etwMonitor.AddTrackedPid(rootPid, launchResult.RootProcessName, 0);
-        foreach (var pid in _processLauncher.GetTrackedPids())
-        {
-            if (pid != rootPid)
-                _etwMonitor.AddTrackedPid(pid, "child", rootPid);
         }
 
         // Live display loop

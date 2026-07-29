@@ -9,6 +9,7 @@ public interface IProcessLauncher
         string filePath,
         string? arguments = null,
         string? workingDirectory = null,
+        Action<int, string>? onProcessStarted = null,
         CancellationToken cancellationToken = default);
 
     Task<ProcessNode> GetProcessTreeAsync(int rootPid, CancellationToken cancellationToken = default);

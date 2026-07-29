@@ -127,21 +127,30 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         _processingTask = Task.Run(ProcessEventsAsync, _cts.Token);
 
         // Start processing in background
+        _agentLogger.Etw("ETW", "Starting Source.Process() on background thread...");
+
         _ = Task.Run(() =>
         {
             try
             {
-                _kernelSession.Source.Process();
+                _agentLogger.Etw("ETW", "Source.Process() entered — processing ETW events");
+                _kernelSession!.Source.Process();
+                _agentLogger.Etw("ETW", "Source.Process() RETURNED — session ended/terminated");
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                _agentLogger.Etw("ETW", "Source.Process() cancelled");
+            }
             catch (Exception ex)
             {
+                _agentLogger.Etw("ETW", $"Source.Process() EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                 ErrorOccurred?.Invoke(this, ex);
             }
         }, _cts.Token);
 
         // Allow session to start
         await Task.Delay(500, cancellationToken);
+        _agentLogger.Etw("ETW", "StartAsync completed — ETW session should be live");
     }
 
     private void EnableKernelProviders(string[] providers)
@@ -160,11 +169,14 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
                 _ => KernelTraceEventParser.Keywords.None
             };
         }
-        _kernelSession!.EnableKernelProvider(keywords);
+        _agentLogger.Etw("ETW", $"EnableKernelProvider: keywords={keywords}");
+        var enabled = _kernelSession!.EnableKernelProvider(keywords);
+        _agentLogger.Etw("ETW", $"EnableKernelProvider done, returned={enabled}");
     }
 
     private void OnFileCreate(FileIOCreateTraceData data)
     {
+        _agentLogger.Etw("ETW", $"OnFileCreate: PID={data.ProcessID} File={data.FileName} Tracked={IsTrackedPid(data.ProcessID)}");
         if (!IsTrackedPid(data.ProcessID)) return;
 
         var evt = CreateSystemEvent(
@@ -246,6 +258,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
 
     private void OnRegCreate(RegistryTraceData data)
     {
+        _agentLogger.Etw("ETW", $"OnRegCreate: PID={data.ProcessID} Key={data.KeyName} Tracked={IsTrackedPid(data.ProcessID)}");
         if (!IsTrackedPid(data.ProcessID)) return;
 
         var evt = CreateSystemEvent(
@@ -276,6 +289,7 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
 
     private void OnRegSetValue(RegistryTraceData data)
     {
+        _agentLogger.Etw("ETW", $"OnRegSetValue: PID={data.ProcessID} Key={data.KeyName} Value={data.ValueName} Tracked={IsTrackedPid(data.ProcessID)}");
         if (!IsTrackedPid(data.ProcessID)) return;
 
         var evt = CreateSystemEvent(
@@ -316,6 +330,8 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
     {
         var pid = (int)data.ProcessID;
         var ppid = (int)data.ParentID;
+
+        _agentLogger.Etw("ETW", $"OnProcessStart: PID={pid} PPID={ppid} Name={data.ProcessName} Tracked={IsTrackedPid(ppid) || IsTrackedPid(pid)}");
 
         // Track child processes: either parent is tracked, OR this PID is already tracked,
         // OR parent was recently tracked (just exited but events still flowing),
@@ -360,6 +376,8 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
     private void OnProcessStop(ProcessTraceData data)
     {
         var pid = (int)data.ProcessID;
+
+        _agentLogger.Etw("ETW", $"OnProcessStop: PID={pid} Name={data.ProcessName} Tracked={IsTrackedPid(pid)}");
 
         // Only emit events for tracked PIDs (fixes: was emitting all process exits as noise)
         if (!IsTrackedPid(pid))

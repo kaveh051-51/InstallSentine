@@ -1,6 +1,6 @@
 namespace InstallSentinel.Services;
+
 using InstallSentinel.Services.Logging;
-using InstallSentinel.Services;
 using InstallSentinel.Models;
 using InstallSentinel.Models.Enums;
 using InstallSentinel.Services.Interfaces;
@@ -58,7 +58,6 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
         try
         {
             _rootProcess = Process.Start(startInfo);
-            _agentLogger.Info("LAUNCHER", $"Process started: {Path.GetFileName(filePath)} PID={_rootProcess?.Id ?? 0}");
             if (_rootProcess == null)
             {
                 return new ProcessLaunchResult
@@ -72,10 +71,10 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
                 };
             }
 
-            // Don't call WaitForInputIdle — it throws with UseShellExecute=false
-            // and doesn't work for console apps. Just give the process a moment to start.
-            await Task.Delay(200, cancellationToken);
+            _agentLogger.Info("LAUNCHER", $"Process started: {Path.GetFileName(filePath)} PID={_rootProcess.Id}");
 
+            // IMMEDIATELY add root PID to tracking — do NOT wait.
+            // Child processes can spawn and do registry/file work within milliseconds.
             _pidLock.EnterWriteLock();
             try
             {

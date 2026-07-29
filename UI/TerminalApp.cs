@@ -259,7 +259,8 @@ public sealed class TerminalApp(
         var rootPid = launchResult.RootProcessId;
         _liveTable.SetContext(rootPid, launchResult.RootProcessName);
 
-        // Add root PID and any tracked children to the ETW engine
+        // IMMEDIATELY add root PID to ETW engine — before any events can arrive.
+        // Child processes spawn within milliseconds and we must track them from the start.
         _etwMonitor.AddTrackedPid(rootPid, launchResult.RootProcessName, 0);
         foreach (var pid in _processLauncher.GetTrackedPids())
         {
@@ -298,7 +299,7 @@ public sealed class TerminalApp(
 
     private void OnProcessSpawned(ProcessNode node)
     {
-        // Propagate child PID to ETW engine so it trackés registry/file events from this process
+        // Propagate child PID to ETW engine so it tracks registry/file events from this process
         _etwMonitor.AddTrackedPid(node.ProcessId, node.ProcessName, node.ParentProcessId);
         _agentLogger.Info("UI", $"ETW now tracking child PID: {node.ProcessId} ({node.ProcessName})");
     }

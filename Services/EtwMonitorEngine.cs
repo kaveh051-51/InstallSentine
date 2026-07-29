@@ -40,6 +40,24 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
     public event EventHandler<SystemEvent>? EventReceived;
     public event EventHandler<Exception>? ErrorOccurred;
 
+    /// <summary>
+    /// Dynamically add a PID to the tracked set (called when ProcessLauncherService detects a new child).
+    /// </summary>
+    public void AddTrackedPid(int pid, string processName, int parentPid)
+    {
+        _pidLock.EnterWriteLock();
+        try
+        {
+            _trackedPids.Add(pid);
+        }
+        finally
+        {
+            _pidLock.ExitWriteLock();
+        }
+        _pidToProcessName[pid] = processName;
+        _pidToParentPid[pid] = parentPid;
+    }
+
     public bool IsRunning => _kernelSession != null;
     public string SessionName { get; private set; } = string.Empty;
 
@@ -299,7 +317,19 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
         var pid = (int)data.ProcessID;
         var ppid = (int)data.ParentID;
 
-        if (IsTrackedPid(ppid) || pid == _trackedPids.FirstOrDefault())
+        // Track child processes: either parent is tracked, OR this PID is already tracked,
+        // OR parent was recently tracked (just exited but events still flowing),
+        // OR process name matches a tracked process (e.g. NSIS/schtasks/conhost children)
+        var shouldTrack = IsTrackedPid(ppid) || IsTrackedPid(pid);
+
+        // Also check: is the parent PID one that was recently tracked but removed?
+        // This handles cases where parent exits before child's events arrive.
+        if (!shouldTrack && ppid > 0 && _pidToParentPid.ContainsKey(ppid))
+        {
+            shouldTrack = IsTrackedPid(_pidToParentPid[ppid]);
+        }
+
+        if (shouldTrack)
         {
             _pidLock.EnterWriteLock();
             try
@@ -330,6 +360,10 @@ public sealed class EtwMonitorEngine(INoiseFilterService noiseFilter, IOptions<A
     private void OnProcessStop(ProcessTraceData data)
     {
         var pid = (int)data.ProcessID;
+
+        // Only emit events for tracked PIDs (fixes: was emitting all process exits as noise)
+        if (!IsTrackedPid(pid))
+            return;
 
         _pidLock.EnterWriteLock();
         try

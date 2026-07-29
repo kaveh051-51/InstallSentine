@@ -294,7 +294,9 @@ public sealed class TerminalApp(
 
     private void OnProcessSpawned(ProcessNode node)
     {
-        // Track process tree
+        // Propagate child PID to ETW engine so it trackés registry/file events from this process
+        _etwMonitor.AddTrackedPid(node.ProcessId, node.ProcessName, node.ParentProcessId);
+        _agentLogger.Info("UI", $"ETW now tracking child PID: {node.ProcessId} ({node.ProcessName})");
     }
 
     private void OnEventReceived(object? sender, SystemEvent evt)

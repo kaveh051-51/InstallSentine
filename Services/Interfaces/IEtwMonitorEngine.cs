@@ -17,6 +17,11 @@ public interface IEtwMonitorEngine : IAsyncDisposable
     bool IsRunning { get; }
     string SessionName { get; }
     EtwStatistics GetStatistics();
+
+    /// <summary>
+    /// Dynamically add a PID to the tracked set (called when ProcessLauncherService detects a new child).
+    /// </summary>
+    void AddTrackedPid(int pid, string processName, int parentPid);
 }
 
 public record EtwStatistics

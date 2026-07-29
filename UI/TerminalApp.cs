@@ -221,7 +221,32 @@ public sealed class TerminalApp(
         _etwMonitor.EventReceived += OnEventReceived;
         _etwMonitor.ErrorOccurred += OnEtwError;
 
-        // Start the installer
+        // Pre-launch: create ETW session BEFORE starting the installer
+        // so we don't miss early events (registry/file writes that happen immediately)
+        var eventChannel = Channel.CreateUnbounded<SystemEvent>();
+        var monitorConfig = new MonitorConfiguration
+        {
+            RootProcessId = 0, // Will be set after launch
+            ProcessTreePids = new HashSet<int>(),
+            SessionName = _config.Etw.SessionName,
+            BufferSizeMb = _config.Etw.BufferSizeMb,
+            MinBuffers = _config.Etw.MinBuffers,
+            MaxBuffers = _config.Etw.MaxBuffers,
+            FlushTimer = _config.Etw.FlushTimer,
+            KernelProviders = _config.Etw.KernelProviders
+        };
+
+        try
+        {
+            await _etwMonitor.StartAsync(monitorConfig, eventChannel.Writer, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ETW monitor error");
+            _agentLogger.Error("ETW", "ETW monitor error", ex);
+        }
+
+        // Now start the installer
         AnsiConsole.MarkupLine($"[cyan]Launching installer...[/]");
         var launchResult = await _processLauncher.LaunchAndTrackAsync(_installerPath, null, null, cancellationToken);
 
@@ -234,34 +259,13 @@ public sealed class TerminalApp(
         var rootPid = launchResult.RootProcessId;
         _liveTable.SetContext(rootPid, launchResult.RootProcessName);
 
-        // Setup ETW monitoring
-        var monitorConfig = new MonitorConfiguration
+        // Add root PID and any tracked children to the ETW engine
+        _etwMonitor.AddTrackedPid(rootPid, launchResult.RootProcessName, 0);
+        foreach (var pid in _processLauncher.GetTrackedPids())
         {
-            RootProcessId = rootPid,
-            ProcessTreePids = _processLauncher.GetTrackedPids(),
-            SessionName = _config.Etw.SessionName,
-            BufferSizeMb = _config.Etw.BufferSizeMb,
-            MinBuffers = _config.Etw.MinBuffers,
-            MaxBuffers = _config.Etw.MaxBuffers,
-            FlushTimer = _config.Etw.FlushTimer,
-            KernelProviders = _config.Etw.KernelProviders
-        };
-
-        var eventChannel = Channel.CreateUnbounded<SystemEvent>();
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _etwMonitor.StartAsync(monitorConfig, eventChannel.Writer, cancellationToken);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "ETW monitor error");
-                _agentLogger.Error("ETW", "ETW monitor error", ex);
-            }
-        }, cancellationToken);
+            if (pid != rootPid)
+                _etwMonitor.AddTrackedPid(pid, "child", rootPid);
+        }
 
         // Live display loop
         await AnsiConsole.Live(_liveTable.GetTable())

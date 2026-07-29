@@ -46,9 +46,14 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
             FileName = filePath,
             Arguments = arguments ?? string.Empty,
             WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(filePath) ?? string.Empty,
-            UseShellExecute = true,
-            Verb = "runas"
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = false
         };
+
+        // For .exe files that need elevation, the manifest should handle it.
+        // UseShellExecute=true breaks PID tracking and WaitForExit.
 
         try
         {
@@ -67,7 +72,9 @@ public sealed class ProcessLauncherService(IOptions<AppConfig> config, AgentLogg
                 };
             }
 
-            await Task.Run(() => _rootProcess.WaitForInputIdle(10000), cancellationToken);
+            // Don't call WaitForInputIdle — it throws with UseShellExecute=false
+            // and doesn't work for console apps. Just give the process a moment to start.
+            await Task.Delay(200, cancellationToken);
 
             _pidLock.EnterWriteLock();
             try
